@@ -512,7 +512,6 @@ class correct_text:
 
         # scenario forty three: starting with nouns then injunction
         elif re.search('^(NN.{0,1})+\sIN', text_pos):
-            print(text_wrds)
             if re.search('^(NN.{0,1}\sIN\sDT)', text_pos):
                 text_wrds = remove_first(split_text_wrds, 3)
                 text_wrds = re.sub('(\(|\[|\)|\])', ',', text_wrds)
@@ -542,7 +541,6 @@ class correct_text:
                                 cleaned_labels_outcomes.append((label, i.strip()))
                 else:
                     cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            print(cleaned_labels_outcomes)
         # scenario forty four: couns, numbers, commas, adjectives, conjunctions, DT's
         elif all(i.__contains__('NN') or i=='CD' or i == 'IN' or i == ',' or i == 'JJ' or i == 'CC' or i == 'DT' for i in split_text_pos):
             if re.search('(CD\sCC\sNN)$', text_pos):
