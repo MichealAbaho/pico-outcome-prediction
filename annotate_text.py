@@ -99,7 +99,7 @@ def xml_wrapper():
         qwe.write('{}:{}\n'.format(re, abstract))
         for i,j in zip(v,u):
             qwe.write('{}:__:{}\n'.format(i,j))
-        #pprint.pprint(list(zip(v,u)))
+
         re += 1
     t2 = time.time()
     print('Time with Numba',(t2-t1),'secs')
@@ -117,7 +117,5 @@ def build_anns(tokens, labels):
     #u_str = ','.join(str(i) for i in u)
     return tokens, u
 
-
 if __name__=='__main__':
     xml_wrapper()
-    #print(timeit.timeit("xml_wrapper()", setup="from __main__ import xml_wrapper"))
