@@ -12,9 +12,14 @@ import random
 from pathlib import Path
 import spacy
 from spacy.util import minibatch, compounding
-import customize_spacy
+from spacy.tokenizer import Tokenizer
+from spacy.language import Language
+from customize_spacy import customize_spacy as CustomTokenizer
 import time
 import numpy as np
+import en_model
+import re
+
 from multiprocessing import Pool, Process, cpu_count
 
 #creating a tag map dictionary that specifies tbe morphological features for the tags, from the universal scheme PENNBANK TREE
@@ -40,10 +45,17 @@ TAG_MAP = {'II': {'pos': 'ADP'}, 'NN': {'pos': 'NOUN'}, ',': {'pos': 'PUNCT'},
 # i.e. creating a new language creating a new Language
 #   """
 
-def run_update(train_data, lang="en", output_dir=None, n_iter=25):
+space = re.compile(' ')
+def custom_tokenizer(nlp):
+    return Tokenizer(nlp.vocab,  prefix_search=space.search,
+                                 suffix_search=space.search,
+                                 infix_finditer=space.finditer,
+                                 token_match=space.match)
+
+def run_update(train_data, lang="en", output_dir='trained_tagger', n_iter=25):
     nlp = spacy.blank(lang)
     #customize spacy tokenizer
-    nlp.tokenizer = customize_spacy.customize_spacy(nlp.vocab)
+    nlp.tokenizer = custom_tokenizer(nlp)
     # add the tagger to the pipeline, nlp.create_pipe works for built-ins that are registered with spaCy
     tagger = nlp.create_pipe("tagger")
     # Add the tags. This needs to be done before you start training.
@@ -71,10 +83,12 @@ def run_update(train_data, lang="en", output_dir=None, n_iter=25):
     print("Tags", [(t.text, t.tag_, t.pos_) for t in doc])
 
     # save the trained model
-    outputdir = os.path.join(os.path.abspath(os.path.curdir), 'trained_tagger')
-    if output_dir is None:
-        if not outputdir.exists():
-            os.makedirs(outputdir)
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        print(output_dir)
+        if not output_dir.exists():
+            output_dir.mkdir()
+        print(nlp.pipe_names)
         nlp.to_disk(output_dir)
 
 
@@ -168,7 +182,7 @@ def scrap_spacy_tags(scrap_source = []):
 
 
 if __name__ == "__main__":
-    pool = Pool(cpu_count())
+    pool = Pool(processes=20)
     start = time.time()
     #path to the medpost corpus
     locate_medpost_corpus = '../Medpost/medtag/medpost'
