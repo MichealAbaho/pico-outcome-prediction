@@ -12,15 +12,12 @@ import timeit
 import time
 from multiprocessing import Process, Pool
 from pprint import pprint
-
 import numpy as np
 from numba import jit
 import numba
 import spacy
 
 from geniatagger import GeniaTagger
-
-pd.options.display.max_rows = 500000
 
 x = e.PHASES
 y = e.LABEL_DECODERS
