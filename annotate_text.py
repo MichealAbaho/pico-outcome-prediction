@@ -10,6 +10,8 @@ import pprint
 import string
 import timeit
 import time
+from multiprocessing import Process, Pool
+from pprint import pprint
 
 import numpy as np
 from numba import jit
@@ -41,16 +43,15 @@ def annotate_text(tager=''):
     turker, ebm_extract = e.read_anns('hierarchical_labels', 'outcomes', \
                                       ann_type='aggregated', model_phase='train')
     t1 = time.time()
-    #qwe = open('x.txt', 'w')
-    re = 0
 
     seq_dir = os.path.abspath(os.path.join(os.path.curdir, 'corrected_outcomes', 'BIO-data'))
     if not os.path.exists(seq_dir):
         os.makedirs(seq_dir)
 
-    with open(os.path.join(seq_dir, 't2_train.bmes'), 'a') as f:
+    with open(os.path.join(seq_dir, 'train.bmes'), 'w') as f:
         for pmid, doc in ebm_extract.items():
             abstract = ' '.join(i for i in doc.tokens)
+            pprint(abstract)
             u = doc.anns['AGGREGATED']
             v = doc.tokens
             o = []
@@ -58,7 +59,7 @@ def annotate_text(tager=''):
             temp, temp_2 = [], []
             t = 0
             m = 0
-            o_come = e.print_labeled_spans_2(doc)[0]
+            o_come = e.print_labeled_spans_2(doc)[0] #extract outcomes from the abstract being examined, [(Outcome-type, Outcome), (Outcome-type, Outcome2)]
 
             #store the annotations and the index of the annotations for each abstract
             for x in range(len(u)):
@@ -82,7 +83,7 @@ def annotate_text(tager=''):
                             pos = [i.tag_ for i in tagged]
 
                         text_pos = ' '.join(i for i in pos)
-            
+
                         label = core_outcome[u[x]]
 
                         corr = correcting_spans.correct_text()
@@ -111,31 +112,16 @@ def annotate_text(tager=''):
 
                     else:
                         t += 1
-
             if corr_outcomes:
-                print(corr_outcomes)
-                # temp_2 = build_sequence_model(v, u, core_outcome, corr_outcomes)
-                # for i in temp_2:
-                #     f.write('{}\n'.format(i))
-                # f.write('\n')
-            #break
+                #print(corr_outcomes)
+                temp_2 = build_sequence_model(v, u, core_outcome, corr_outcomes)
+                for i in temp_2:
+                    f.write('{}\n'.format(i))
+                f.write('\n')
         f.close()
     t2 = time.time()
-    print('Time with Numba',(t2-t1),'secs')
 
-
-def build_anns(tokens, labels):
-    u = []
-    for i in tokens:
-        if not i.__contains__('___'):
-            u.append(0)
-        else:
-            q = i.split('___')
-            t = [a for a,b in labels.items() if b == q[0]]
-            u.append(t[0])
-    #u_str = ','.join(str(i) for i in u)
-    return tokens, u
-
+#BIO tagging function
 def build_sequence_model(tokens, anns, cos, corr_outcomes):
     b = 0
     temp = []
@@ -154,29 +140,33 @@ def build_sequence_model(tokens, anns, cos, corr_outcomes):
                 if temp:
                     t_temp = [i for i in temp]
                     if len(t_temp) == 1:
-                        temp_2.append('{} S-{}'.format(t_temp[0][0], core_outcome[t_temp[0][1]]))
+                        temp_2.append('{} B-{}'.format(t_temp[0][0], label_tag(core_outcome, t_temp[0][1])))
                     elif len(t_temp) == 2:
-                        temp_2.append('{} B-{}'.format(t_temp[0][0], core_outcome[t_temp[0][1]]))
-                        temp_2.append('{} E-{}'.format(t_temp[1][0], core_outcome[t_temp[1][1]]))
+                        temp_2.append('{} B-{}'.format(t_temp[0][0], label_tag(core_outcome, t_temp[0][1])))
+                        temp_2.append('{} I-{}'.format(t_temp[1][0], label_tag(core_outcome, t_temp[1][1])))
                     else:
                         for h in range(len(t_temp)):
                             if h == 0:
-                                temp_2.append('{} B-{}'.format(t_temp[h][0], core_outcome[t_temp[h][1]]))
-                            elif h == (len(t_temp) - 1):
-                                temp_2.append('{} E-{}'.format(t_temp[h][0], core_outcome[t_temp[h][1]]))
+                                temp_2.append('{} B-{}'.format(t_temp[h][0], label_tag(core_outcome, t_temp[h][1])))
                             else:
-                                temp_2.append('{} I-{}'.format(t_temp[h][0], core_outcome[t_temp[h][1]]))
+                                temp_2.append('{} I-{}'.format(t_temp[h][0], label_tag(core_outcome, t_temp[h][1])))
 
                 temp.clear()
                 if corr_outcomes:
                     del corr_outcomes[0]
 
             else:
-                temp_2.append('{} {}'.format(tokens[i], 0))
+                temp_2.append('{} {}'.format(tokens[i], "O"))
                 b += 1
     return temp_2
 
+def label_tag(d, x):
+    w = "O"
+    if x != 0:
+        w = d[x].upper()
+    return w
+
 
 if __name__=='__main__':
-    annotate_text(tager='medpost')
+    annotate_text(tager='genia')
     #print(timeit.timeit("xml_wrapper()", setup="from __main__ import xml_wrapper"))
