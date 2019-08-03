@@ -26,4 +26,7 @@ Train a classifier
 NB: The second argument can as well be cnn or svm
 
 
-
+```
+python GC_script.py test.csv linear
+python GC_script.py test.csv non-linear
+```
