@@ -12,21 +12,21 @@ This repository contains source code used in publications:
 Reproducing the work or for purposes of running experiments on different datasets, Follow the instructions below,
 
 Requirements
+```
 - Python 3
 - Any of the following NLP libraries (Stanford or Spacy)
 - EBM-NLP corpus https://github.com/bepnye/EBM-NLP/blob/master/ebm_nlp_2_00.tar.gz
-
+```
 Noise Filtration
 Run this script to correct any flaws noise  the annotations within
+```
 - python annotate_text.py medpost
+```
 NB: The second argument can as well be genia or stanford
 
 Train a classifier
+```
 - python main.py lstm
+```
 NB: The second argument can as well be cnn or svm
 
-
-```
-python GC_script.py test.csv linear
-python GC_script.py test.csv non-linear
-```
