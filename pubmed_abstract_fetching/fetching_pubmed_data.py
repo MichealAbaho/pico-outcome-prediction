@@ -2,7 +2,7 @@
 """
 Created on Sat Mar  9 15:03:45 2019
 
-@author: user
+@author: Micheal
 """
 import pandas as pd
 from Bio import Entrez, Medline
