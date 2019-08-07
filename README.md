@@ -9,7 +9,7 @@ The goal of the project is to identify and extract outcome phrases from medical 
 This repository contains source code used in publications:
 - Abaho, Micheal, et al. "Correcting Crowdsourced annotations to Improve Detection of Outcome types in Evidence Based Medicine."http://danushka.net/papers/abaho_kdh_2019.pdf
 
-Reproducing the work or for purposes of running experiments on different datasets, Follow the instructions below,
+Follow the instructions below to reproduce the results for purposes of running experiments on different datasets, otherwise the ebm_nlp_1_00 or ebm_nlp_2_00 datasets used can be found here https://github.com/bepnye/EBM-NLP 
 
 Requirements
 ```
@@ -19,6 +19,7 @@ Requirements
 ```
 Noise Filtration
 Run this script to correct any flaws noise  the annotations within
+
 ```
 - python annotate_text.py medpost
 ```
