@@ -13,7 +13,7 @@ Follow the instructions below to reproduce the results for purposes of running e
 
 Requirements
 ```
-- Python 3
+- Python 3, tensorflow and keras
 - Install and setup any one of the following NLP libraries (Spacy or Stanford), Spacy recommended.
 - EBM-NLP corpus https://github.com/bepnye/EBM-NLP/blob/master/ebm_nlp_2_00.tar.gz, add the annotations and documents directories to your setup project directory
 - Install geniatagger-python via pip,
