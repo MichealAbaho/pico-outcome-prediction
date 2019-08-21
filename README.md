@@ -7,7 +7,7 @@ The goal of the project is to identify and extract outcome phrases from medical 
 - Extract crowdsourced outcomes from EBM-NLP courpus - ebm_nlp_demo.py
 
 This repository contains source code used in publications:
-- Abaho, Micheal, et al. "Correcting Crowdsourced annotations to Improve Detection of Outcome types in Evidence Based Medicine."http://danushka.net/papers/abaho_kdh_2019.pdf
+- Abaho, Micheal, et al. "Correcting Crowdsourced annotations to Improve Detection of Outcome types in Evidence Based Medicine."http://ceur-ws.org/Vol-2429/paper1.pdf
 
 Follow the instructions below to reproduce the results for purposes of running experiments on different datasets, otherwise the ebm_nlp_1_00 or ebm_nlp_2_00 datasets used can be found here https://github.com/bepnye/EBM-NLP 
 
