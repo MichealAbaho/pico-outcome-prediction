@@ -13,10 +13,10 @@ import time
 from multiprocessing import Process, Pool
 from pprint import pprint
 import numpy as np
-from numba import jit
+import sys
 import numba
 import spacy
-
+from pycorenlp import StanfordCoreNLP
 from geniatagger import GeniaTagger
 
 x = e.PHASES
@@ -28,10 +28,10 @@ print(core_outcome)
 def annotate_text(tager=''):
     genia = GeniaTagger('../genia-tagger/geniatagger-3.0.2/geniatagger')
     medpost = spacy.load(os.path.abspath('trained_tagger'))
+    stanford = StanfordCoreNLP('http://localhost:9000')
     main_dir = 'corrected_outcomes'
     data_dir = os.path.abspath(os.path.join(main_dir, 'aggregated'))
-    if not os.path.exists(os.path.dirname(data_dir)):
-        os.makedirs(os.path.dirname(data_dir))
+    create_storage_dirs([data_dir])
 
     sub_dir = os.path.abspath(os.path.join(data_dir, 'test'))
     if not os.path.exists(os.path.dirname(sub_dir)):
@@ -39,16 +39,16 @@ def annotate_text(tager=''):
 
     turker, ebm_extract = e.read_anns('hierarchical_labels', 'outcomes', \
                                       ann_type='aggregated', model_phase='train')
-    t1 = time.time()
 
     seq_dir = os.path.abspath(os.path.join(os.path.curdir, 'corrected_outcomes', 'BIO-data'))
-    if not os.path.exists(seq_dir):
-        os.makedirs(seq_dir)
+    #classificationdata_dir = os.path.abspath(os.path.join(os.path.curdir, 'corrected_outcomes', 'Labels-Outcomes-data'))
+    create_storage_dirs([seq_dir])
+    ebm_csv = []
 
     with open(os.path.join(seq_dir, 'train.bmes'), 'w') as f:
         for pmid, doc in ebm_extract.items():
             abstract = ' '.join(i for i in doc.tokens)
-            pprint(abstract)
+            #pprint(abstract)
             u = doc.anns['AGGREGATED']
             v = doc.tokens
             o = []
@@ -72,18 +72,26 @@ def annotate_text(tager=''):
 
                         txt_toks = [v[i[0]] for i in o]
                         text_wrds = ' '.join(i for i in txt_toks)
+
+                        corr = correcting_spans.correct_text()
+                        text_wrds = corr.statTerm_keyWord_punct_remove(text_wrds)
+
                         if tager.lower() == 'genia':
                             tagged = genia.parse(text_wrds)
                             pos = [i[2] for i in tagged]
                         elif tager.lower() == 'medpost':
                             tagged = medpost(text_wrds)
                             pos = [i.tag_ for i in tagged]
+                        elif tager.lower() == 'stanford':
+                            pos = []
+                            for elem in word_tokenize(text_wrds):
+                                stan = stanford.annotate(elem, properties={'annotators':'pos', 'outputFormat':'json'})
+                                pos.append(stan['sentences'][0]['tokens'][0]['pos'])
 
                         text_pos = ' '.join(i for i in pos)
 
                         label = core_outcome[u[x]]
 
-                        corr = correcting_spans.correct_text()
                         corrected_spans = corr.pos_co_occurrence_cleaning(text_wrds, text_pos, label)
 
                         if len(corrected_spans) == 0:
@@ -110,13 +118,16 @@ def annotate_text(tager=''):
                     else:
                         t += 1
             if corr_outcomes:
-                #print(corr_outcomes)
                 temp_2 = build_sequence_model(v, u, core_outcome, corr_outcomes)
                 for i in temp_2:
                     f.write('{}\n'.format(i))
                 f.write('\n')
+                for k in corr_outcomes:
+                    ebm_csv.append(k)
+        ebm_csv_df = pd.DataFrame(ebm_csv, columns=['Label','Outcome'])
+        ebm_csv_df.to_csv('labels_outcomes.csv')
         f.close()
-    t2 = time.time()
+
 
 #BIO tagging function
 def build_sequence_model(tokens, anns, cos, corr_outcomes):
@@ -163,7 +174,18 @@ def label_tag(d, x):
         w = d[x].upper()
     return w
 
+def create_storage_dirs(file_dir):
+    for i in file_dir:
+        print(i)
+        # if not os.path.exists(i):
+        #     os.makedirs(i)
 
-if __name__=='__main__':
-    annotate_text(tager='genia')
+if len(sys.argv) < 2:
+    raise ValueError("Check your arguments, Either one of these are missing genia, medpost or stanford")
+
+input_1 = sys.argv[1]
+annotate_text(tager=input_1)
+
+# if __name__=='__main__':
+#     annotate_text(tager='genia')
     #print(timeit.timeit("xml_wrapper()", setup="from __main__ import xml_wrapper"))
