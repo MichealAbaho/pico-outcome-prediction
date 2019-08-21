@@ -17,7 +17,6 @@ from io import StringIO
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import numpy as np
-from pycorenlp import StanfordCoreNLP
 import pprint
 import string
 from nltk.stem.porter import PorterStemmer
@@ -48,7 +47,7 @@ class correct_text:
                 stat_terms.append(i)
 
         self.unwanted = {'punctuation': ['.', "'", ';', ':'],
-                        'stat_lexicon':  extracting_statistical_lexicon(scrap_stat_terms(scrap_source = [])),
+                        'stat_lexicon':  extracting_statistical_lexicon(scrap_stat_terms(scrap_source = ['http://isi.cbs.nl/glossary/bloken00.htm'])),
                         'rct_instruments_results': ['subjective significance questionnaire',
                                                     'Baseline tumour marker',
                                                     'Stroop Test and Wisconsin Card Sorting Test',
@@ -65,10 +64,56 @@ class correct_text:
                                                     'Western Ontario and McMaster Universities Osteoarthritis Index ( WOMAC ) function scale',
                                                     'Western Ontario and McMaster Universities Osteoarthritis Index ( WOMAC ) score'],
                         'stp_words': get_stop_words(),
-                        'key_words_keep':['valu', 'score', 'time', 'level', 'scale', 'test'],
+                        'key_words_keep':['valu', 'score', 'time', 'level', 'scale', 'test', 'quality'],
                         'relative_terms':['total', 'average', 'increase', 'decrease', 'negative', 'positive']
                          }
 
+    def statTerm_keyWord_punct_remove(self, text_wrds):
+        # remove un-necessary random punctuation
+        for i in (self.unwanted['punctuation']):
+            text_wrds = re.sub(re.escape('{}'.format(i)), '', text_wrds, flags=re.IGNORECASE)
+
+        # remove unwanted key words
+        for i in (self.unwanted['rct_instruments_results']):
+            p_utwd = ' {} '.format(i)
+            p_utwd_2 = '^{} '.format(i)
+            p_utwd_3 = ' {}$'.format(i)
+            if i.lower() == text_wrds.lower():
+                text_wrds = text_wrds.replace(text_wrds, '')
+            elif re.search(p_utwd, text_wrds, re.IGNORECASE):
+                text_wrds = re.sub(p_utwd, ' ', text_wrds, flags=re.IGNORECASE)
+            elif re.search(p_utwd_2, text_wrds, re.IGNORECASE):
+                text_wrds = re.sub(p_utwd_2, '', text_wrds, flags=re.IGNORECASE).strip()
+            elif re.search(p_utwd_3, text_wrds, re.IGNORECASE):
+                text_wrds = re.sub(p_utwd_3, '', text_wrds, flags=re.IGNORECASE)
+
+        # eliminating the statistical terms from the corpus
+        for i in self.unwanted['stat_lexicon']:
+            p_utwd_4 = '^{} '.format(i)
+            p_utwd_5 = ' {} '.format(i)
+            p_utwd_6 = ' {}$'.format(i)
+
+            if i == text_wrds.lower():
+                text_wrds = text_wrds.replace(text_wrds, '')
+            else:
+                if not text_wrds.lower().__contains__('side effects'):
+                    if re.search(p_utwd_4, text_wrds, re.IGNORECASE):
+                        text_wrds = re.sub(p_utwd_4, '', text_wrds, flags=re.IGNORECASE).strip()
+                    elif re.search(p_utwd_5, text_wrds, re.IGNORECASE):
+                        text_wrds = re.sub(p_utwd_5, ' ', text_wrds, flags=re.IGNORECASE)
+                    elif re.search(p_utwd_6, text_wrds, re.IGNORECASE):
+                        text_wrds = re.sub(re.escape(p_utwd_6), '', text_wrds, flags=re.IGNORECASE)
+
+        # ensure first and last elements are neither stopwords nor punctuations
+        if text_wrds:
+            text_wrds_split = text_wrds.split()
+            l = len(text_wrds_split) - 1
+            text_wrds_split[0] = '' if text_wrds_split[0].lower() in self.unwanted['stp_words'] or text_wrds_split[0] in self.unwanted['punctuation'] else text_wrds_split[0]
+            text_wrds_split[l] = '' if text_wrds_split[l].lower() in self.unwanted['stp_words'] or text_wrds_split[l] in self.unwanted['punctuation'] else text_wrds_split[l]
+
+            text_wrds = ' '.join(i for i in text_wrds_split).strip()
+
+        return text_wrds
 
     def pos_co_occurrence_cleaning(self, text_wrds, text_pos, label):
         cleaned_labels_outcomes = []
@@ -82,505 +127,517 @@ class correct_text:
         label = label
 
         split_text_pos, split_text_wrds = text_pos.split(), text_wrds.split()
-
         split_text_wrds_copy = [stem_word(i) for i in split_text_wrds]
 
-        #get reed of quantifying terms
-        for i in [stem_word(h) for h in self.unwanted['relative_terms']]:
-            if i in split_text_wrds_copy:
-                e = split_text_wrds_copy.index(i)
-                del split_text_wrds[e]
-                del split_text_pos[e]
+        try:
+            for i in range(len(split_text_wrds)):
+                if split_text_wrds[i].__contains__('+'):
+                    split_text_pos[i] = 'NN'
+                elif split_text_wrds[i] in ['(',')', '[', ']']:
+                    split_text_pos[i] = split_text_wrds[i]
 
-        #ensure the first word is neither
-        for j in range(len(split_text_pos)):
-            if j == 0:
-                if split_text_pos[j] in (['TO','IN','CD','CC',',']):
-                    split_text_wrds = split_text_wrds[1:]
-                    split_text_pos = split_text_pos[1:]
 
-        text_wrds = ' '.join([i for i in split_text_wrds])
-        text_pos = ' '.join([i for i in split_text_pos])
+            #get reed of quantifying terms
+            for i in [stem_word(h) for h in self.unwanted['relative_terms']]:
+                if i in split_text_wrds_copy:
+                    e = split_text_wrds_copy.index(i)
+                    del split_text_wrds[e]
+                    del split_text_pos[e]
 
-        #scenario one (outcomes with a single word)
-        if len(split_text_wrds) == 1:
-            if text_wrds in get_punctuation():
-                pass
-            elif stem_word(text_wrds.lower()) in self.unwanted['rct_instruments_results']+self.unwanted['key_words_keep']:
-                pass
-            else:
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
+            #ensure the first word is neither
+            for j in range(len(split_text_pos)):
+                if j == 0:
+                    if split_text_pos[j] in (['TO','IN','CD','CC',',']):
+                        split_text_wrds = split_text_wrds[1:]
+                        split_text_pos = split_text_pos[1:]
 
-        # sceanrio 2 (outcomes with a couple of words)
-        elif len(split_text_wrds) == 2:
-            if any(i in get_punctuation() for i in split_text_pos):
-                for i in get_punctuation():
-                    text_wrds = text_wrds.replace(i, '').strip()
-                if text_wrds:
-                    cleaned_labels_outcomes.append((label, text_wrds))
-            elif any(i == 'CC' or i == 'DT' or i == 'TO' for i in split_text_pos):
-                s = [i for i, j in zip(split_text_wrds, split_text_pos) if j not in ['TO', 'CC', 'DT']]
-                to_add = str(s).strip("'[]'")
-                if to_add.lower() not in self.unwanted['rct_instruments_results']:
-                    if stem_word(to_add.lower()) not in self.unwanted['key_words_keep']:
-                        cleaned_labels_outcomes.append((label, to_add.strip()))
-            else:
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
 
-        # sceanrio 3 (outcomes with three words)
-        elif len(split_text_wrds) == 3:
-            to_add = ''
-            if all(i == ',' or i == 'CC' or i == 'DT' for i in split_text_pos):
-                cleaned_labels_outcomes.append((label, ''))
-            elif any(i == ',' or i == 'CC' or i == 'DT' for i in split_text_pos):
-                if re.search('^DT|^CC|^,', text_pos):
-                    for y in split_text_pos:
-                        if y == 'DT' or y == 'CC' or y == ',' or y == '':
-                            split_text_wrds = split_text_wrds[1:]
-                        else:
-                            break
-                    text_wrds = remove_first(split_text_wrds, 0)
-                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
-                elif re.search('CC$|DT$|,$', text_pos):
-                    cleaned_labels_outcomes.append((label, ' '.join(i for i in split_text_wrds[:-1])))
+            text_wrds = ' '.join([i for i in split_text_wrds])
+
+            text_pos = ' '.join([i for i in split_text_pos])
+
+
+            #scenario one (outcomes with a single word)
+            if len(split_text_wrds) == 1:
+                if text_wrds in get_punctuation():
+                    pass
+                elif stem_word(text_wrds.lower()) in self.unwanted['rct_instruments_results']+self.unwanted['key_words_keep']:
+                    pass
                 else:
-                    if re.search('CC|,', text_pos):
-                        cleaned_labels_outcomes.append((label, ' '.join(i for i in split_text_wrds[:1])))
-                        cleaned_labels_outcomes.append((label, ' '.join(i for i in split_text_wrds[2:])))
-                    else:
-                        cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                to_add = text_wrds.strip()
-                cleaned_labels_outcomes.append((label, to_add))
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
 
-        # sceanrio four (outcome with key words)
-        elif any(stem_word(i).lower() in self.unwanted['key_words_keep'] for i in split_text_wrds):
-            f = ' '.join([stem_word(i) for i in split_text_wrds])
-            to_add = ''
-            for j in self.unwanted['key_words_keep']:
-                if re.search('{}$'.format(j), f):
-                    if j == 'level':
-                        if re.search('^((VBN\sIN)|(NNS\sIN))', text_pos):
-                            to_add = remove_first(split_text_wrds, 2)
+            # sceanrio 2 (outcomes with a couple of words)
+            elif len(split_text_wrds) == 2:
+                if any(i in get_punctuation() for i in split_text_pos):
+                    for i in get_punctuation():
+                        text_wrds = text_wrds.replace(i, '').strip()
+                    if text_wrds:
+                        cleaned_labels_outcomes.append((label, text_wrds))
+                elif any(i == 'CC' or i == 'DT' or i == 'TO' for i in split_text_pos):
+                    s = [i for i, j in zip(split_text_wrds, split_text_pos) if j not in ['TO', 'CC', 'DT']]
+                    to_add = str(s).strip("'[]'")
+                    if to_add.lower() not in self.unwanted['rct_instruments_results']:
+                        if stem_word(to_add.lower()) not in self.unwanted['key_words_keep']:
+                            cleaned_labels_outcomes.append((label, to_add.strip()))
+                else:
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # sceanrio 3 (outcomes with three words)
+            elif len(split_text_wrds) == 3:
+                to_add = ''
+                if all(i == ',' or i == 'CC' or i == 'DT' for i in split_text_pos):
+                    cleaned_labels_outcomes.append((label, ''))
+                elif any(i == ',' or i == 'CC' or i == 'DT' for i in split_text_pos):
+                    if re.search('^DT|^CC|^,', text_pos):
+                        for y in split_text_pos:
+                            if y == 'DT' or y == 'CC' or y == ',' or y == '':
+                                split_text_wrds = split_text_wrds[1:]
+                            else:
+                                break
+                        text_wrds = remove_first(split_text_wrds, 0)
+                        cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                    elif re.search('CC$|DT$|,$', text_pos):
+                        cleaned_labels_outcomes.append((label, ' '.join(i for i in split_text_wrds[:-1])))
+                    else:
+                        if re.search('CC|,', text_pos):
+                            cleaned_labels_outcomes.append((label, ' '.join(i for i in split_text_wrds[:1])))
+                            cleaned_labels_outcomes.append((label, ' '.join(i for i in split_text_wrds[2:])))
+                        else:
+                            cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    to_add = text_wrds.strip()
+                    cleaned_labels_outcomes.append((label, to_add))
+
+            # sceanrio four (outcome with key words)
+            elif any(stem_word(i).lower() in self.unwanted['key_words_keep'] for i in split_text_wrds):
+                f = ' '.join([stem_word(i) for i in split_text_wrds])
+                to_add = ''
+                for j in self.unwanted['key_words_keep']:
+                    if re.search('{}$'.format(j), f):
+                        if j == 'level':
+                            if re.search('^((VBN\sIN)|(NNS\sIN))', text_pos):
+                                to_add = remove_first(split_text_wrds, 2)
+                                cleaned_labels_outcomes.append((label, to_add.strip()))
+                            else:
+                                to_add = text_wrds
+                                cleaned_labels_outcomes.append((label, to_add.strip()))
+                        elif j == 'score':
+                            to_add = ' '.join(i for i in split_text_wrds[:-1])
+                            cleaned_labels_outcomes.append((label, to_add.strip()))
+                        elif j == 'scale':
+                            to_add = ' '.join(i for i in split_text_wrds[:-1])
+                            cleaned_labels_outcomes.append((label, to_add.strip()))
+                        elif j == 'valu':
+                            to_add = ' '.join(i for i in split_text_wrds[:-3])
                             cleaned_labels_outcomes.append((label, to_add.strip()))
                         else:
                             to_add = text_wrds
                             cleaned_labels_outcomes.append((label, to_add.strip()))
-                    elif j == 'score':
-                        to_add = ' '.join(i for i in split_text_wrds[:-1])
-                        cleaned_labels_outcomes.append((label, to_add.strip()))
-                    elif j == 'scale':
-                        to_add = ' '.join(i for i in split_text_wrds[:-1])
-                        cleaned_labels_outcomes.append((label, to_add.strip()))
-                    elif j == 'valu':
-                        to_add = ' '.join(i for i in split_text_wrds[:-3])
-                        cleaned_labels_outcomes.append((label, to_add.strip()))
-                    else:
+                    elif re.search('^{}'.format(j), f):
                         to_add = text_wrds
                         cleaned_labels_outcomes.append((label, to_add.strip()))
-                elif re.search('^{}'.format(j), f):
-                    to_add = text_wrds
-                    cleaned_labels_outcomes.append((label, to_add.strip()))
-                elif re.search(' {} '.format(j), f):
-                    if re.search('JJ CC JJ', text_pos):
-                        to_add = text_wrds
-                        cleaned_labels_outcomes.append((label, to_add.strip()))
-                    else:
-                        for x, y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds),
-                                        re.split('CC|,', text_pos)):
-                            if y.strip() != 'JJ':
-                                to_add = x.strip()
-                                if to_add:
-                                    if to_add.split()[0].lower() in self.unwanted['relative_terms']:
-                                        to_add = remove_first(to_add, 1)
-                                        cleaned_labels_outcomes.append((label, to_add.strip()))
-
-        #scenario five: only nouns
-        elif (all(i.__contains__('NN') for i in split_text_pos)):
-            if text_wrds:
-                if text_wrds.split()[0] in self.unwanted['relative_terms']:
-                    text_wrds = remove_first(text_wrds, 1)
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        #scenario six: nouns and conjunctions
-        elif all(i.__contains__('NN') or i == 'CC' for i in split_text_pos):
-            if(len([j for j in split_text_pos if j == 'CC']) == 1):
-                for x in re.split(' and | or | and$| or$', text_wrds):
-                    if x.split()[0].lower() in self.unwanted['relative_terms']:
-                        x = remove_first(x, 1)
-                    cleaned_labels_outcomes.append((label, x.strip()))
-            elif(len([j for j in split_text_pos if j == 'CC']) > 1):
-                cleaned_labels_outcomes.append((label, ' '.join(text_wrds.split()[-2:]).strip()))
-
-        # scenario seven: nouns and injunctions
-        elif all(i.__contains__('NN') or i == 'IN' for i in split_text_pos):
-            to_add = ''
-            if re.search('^(NN.{0,1}\sIN)', text_pos):
-                split_text_wrds = split_text_wrds[2:]
-                if split_text_wrds[0].lower() in self.unwanted['relative_terms']:
-                    to_add = remove_first(split_text_wrds, 1)
-                else:
-                    to_add = remove_first(split_text_wrds, 0)
-            else:
-                to_add = text_wrds
-            if to_add:
-                cleaned_labels_outcomes.append((label, to_add.strip()))
-
-
-        # scenario eight: only nouns and adjectives
-        elif all(i.__contains__('NN') or i == 'JJ' for i in split_text_pos):
-            if split_text_wrds[0].lower() in self.unwanted['relative_terms']:
-                text_wrds = remove_first(text_wrds, 1)
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario nine: only conjunctions and adjectives
-        elif all(i.__contains__('CC') or i == 'JJ' for i in split_text_pos):
-            pass
-
-        # scenario ten: only nouns, conjunctions, and injunctions
-        elif all(i.__contains__('NN') or i == 'CC' or i == 'IN' for i in split_text_pos):
-            to_add = ''
-            if re.search('^(NN.{0,1}\sIN)', text_pos):
-                to_add = remove_first(split_text_wrds, 2)
-                if re.search('(IN\sCC\sIN\sNN.{0,1})$', text_pos):
-                    cleaned_labels_outcomes.append((label, to_add))
-                else:
-                    for x in re.split(' and | or | ; | and$| or$| ;$', to_add):
-                        cleaned_labels_outcomes.append((label, x))
-            else:
-                if re.search('((IN|NN.{0,1})\sCC\s[(NN.{0,1})(IN)\s]*NN.{0,1})$', text_pos):
-                    cleaned_labels_outcomes.append((label, text_wrds))
-                else:
-                    cleaned_labels_outcomes.append((label, ' '.join(text_wrds.split()[-3:])))
-
-        # scenario eleven: only nouns, conjunctions, and adjectives
-        elif all(i.__contains__('NN') or i == 'CC' or i == 'JJ' for i in split_text_pos):
-            sc5_split_index = split_text_pos.index('CC')
-            if split_text_wrds[sc5_split_index-1] in split_text_wrds[sc5_split_index+1:]:
-                cleaned_labels_outcomes.append((label, ' '.join(i for i in split_text_wrds[:sc5_split_index])))
-                cleaned_labels_outcomes.append((label, ' '.join(i for i in split_text_wrds[(sc5_split_index+1):])))
-            else:
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        #scenario twelve: nouns and comma's
-        elif all(i.__contains__('NN') or i == ',' for i in split_text_pos):
-            for i in text_wrds.split(','):
-                cleaned_labels_outcomes.append((label, i.strip()))
-
-        #scenario thirteen: nouns or commas and conjunctions
-        elif all(i.__contains__('NN') or i == ',' or i == 'CC' for i in split_text_pos):
-            for i in re.split(',| and | or | ; | and$| or$| ;$', text_wrds):
-                if i:
-                    cleaned_labels_outcomes.append((label, i.strip()))
-
-        #scenario fourteen: nouns and commas and injunctions
-        elif all(i.__contains__('NN') or i == ',' or i == 'IN' for i in  split_text_pos):
-            for i in re.split(',', text_wrds):
-                if i is not None:
-                    cleaned_labels_outcomes.append((label, i.strip()))
-
-        # scenario fifteen
-        elif all(i.__contains__('NN') or i == ',' or i == 'JJ' for i in  split_text_pos):
-            pass
-
-        #scenario sixteen nouns, comma's, injunctions and adjectives
-        elif all(i.__contains__('NN') or i == ',' or i == 'IN' or i == 'JJ' for i in split_text_pos):
-            if re.search('^(NN.{0,1}\sIN)', text_pos):
-                text_wrds = remove_first(text_wrds, 2)
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario seventeen nouns, injunctions, commas and conjunctions
-        elif all(i.__contains__('NN') or i == ',' or i == 'IN'  or i == 'CC' for i in split_text_pos):
-            if re.search('(NN\s[,\sCC]+NN.{0,1}\s(IN)\sNN.{0,1})$', text_pos):
-                cleaned_labels_outcomes.append((label, ' '.join([i for i in split_text_wrds[-6:]]).strip()))
-            else:
-                for x, y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split('CC|,|;', text_pos)):
-                    if y.strip() != 'NNS':
-                        cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario eighteen: nouns, injunctions, conjunctions and adjectives
-        elif all(i.__contains__('NN') or i == 'IN' or i == 'CC' or i == 'JJ' for i in split_text_pos):
-            for x, y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split('CC|,|;', text_pos)):
-                if re.search('^(NN.{0,1}\sIN)', y):
-                    x = remove_first(x, 2)
-                    if x.split()[0].lower() in self.unwanted['relative_terms']:
-                        x = remove_first(x, 1)
-                    else:
-                        x = x
-                else:
-                    if x.split()[0].lower() in self.unwanted['relative_terms']:
-                        x = remove_first(x, 1)
-                    else:
-                        x = x
-                cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario ninteen: nouns, injunctions, conjunctions, adjectives and commas
-        elif all(i.__contains__('NN') or i == 'IN' or i == 'CC' or i == 'JJ' or i == ',' for i in split_text_pos):
-            for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
-                cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario twenty: nouns and verbs
-        elif all(i.__contains__('NN') or i.__contains__('V')  for i in split_text_pos):
-            split_text_wrds = ['' if j.__contains__('V') else i for i,j in zip(split_text_wrds, split_text_pos)]
-            if split_text_wrds[0] in self.unwanted['relative_terms'] or split_text_wrds[0] == '':
-                text_wrds = remove_first(split_text_wrds, 1)
-            cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario twenty one: nouns, verbs and conjunctions
-        elif all(i.__contains__('NN') or i.__contains__('V') or i == 'CC' for i in split_text_pos):
-            text_wrds = ' '.join([i for i in ['' if j == 'VB' else i for i, j in zip(split_text_wrds, split_text_pos)]])
-            if re.search('((VBG|NN.{0,1})\sCC\s(NN.{0,1}|VBG)+\s(NN.{0,1})+)$', text_pos):
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
-                    cleaned_labels_outcomes.append((label, x.strip()))
-
-        #scenario twenty two: nouns, verbs and injunctions
-        elif all(i.__contains__('NN') or i.__contains__('V') or i == 'IN' for i in split_text_pos):
-            if re.search('^(NN.{0,1}\sIN)', text_pos):
-                text_wrds = remove_first(split_text_wrds, 2)
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario twenty three: nouns, verbs and adjectives
-        elif all(i.__contains__('NN') or i.__contains__('V') or i == 'JJ' for i in split_text_pos):
-            if re.search('^VB', text_pos):
-                text_wrds = remove_first(text_wrds, 1)
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario twenty four: nouns, verbs and commas
-        elif all(i.__contains__('NN') or i.__contains__('V') or i == ',' for i in split_text_pos):
-            pass
-
-        # scenario twenty five: nouns, verbs, commas and injunctions
-        elif all(i.__contains__('NN') or i.__contains__('V') or i == 'CC' or i == 'IN' for i in split_text_pos):
-            for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
-                cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario twenty six: nouns, verbs, conjunctions and adjectives
-        elif all(i.__contains__('NN') or i.__contains__('V') or i == 'CC' or i == 'JJ' for i in split_text_pos):
-            for x, y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split('CC|,|;', text_pos)):
-                if y.strip() != 'JJ':
-                    cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario twenty seven: nouns, verbs, conjunctions and acommas
-        elif all(i.__contains__('NN') or i.__contains__('V') or i == 'CC' or i == ',' for i in split_text_pos):
-            pass
-
-        # scenario twenty seven: nouns, verbs, injunctions and adjectives
-        elif all(i.__contains__('NN') or i.__contains__('V') or i == 'IN' or i == 'JJ' for i in split_text_pos):
-            split_text_wrds = ['' if j == 'VBN' else i for i, j in zip(split_text_wrds, split_text_pos)]
-            if re.search('^(NN.{0,1}\sIN)|^(VB.{0,1}\sIN)', text_pos):
-                text_wrds = remove_first(text_wrds, 2)
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                text_wrds = remove_first(split_text_wrds, 0)
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario twenty eight: nouns, verbs, injunctions,d adjectives and conjunctions
-        elif all(i.__contains__('NN') or i.__contains__('V') or i == 'IN' or i == 'JJ' or i == 'CC' for i in split_text_pos):
-            if re.search('(VB.{0,1}\sCC\sJJ\sNN.{0,1}\sIN\sNN.{0,1})$', text_pos):
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
-                    cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario twenty nine: nouns, verbs, injunctions,d adjectives, conjunctions and commas
-        elif all(i.__contains__('NN') or i.__contains__('V') or i == 'IN' or i == 'JJ' or i == 'CC' or i == ',' for i in split_text_pos):
-            text_wrds = ' '.join([i for i in ['' if j == 'VBN' or j == 'VB' else i for i, j in zip(split_text_wrds, split_text_pos)]])
-            tex_pos =  ' '.join([i for i in ['' if j == 'VBN' or j == 'VB' else j for j in  split_text_pos]])
-            for x,y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split(' CC |,', text_pos)):
-                if re.search('^(NN.{0,1}\sIN)', y):
-                    x = remove_first(x, 2)
-                    cleaned_labels_outcomes.append((label, x.strip()))
-                else:
-                    cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario twenty nine: nouns and braces
-        elif all(i.__contains__('NN') or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario thirty one: nouns, adjectives and braces
-        elif all(i.__contains__('NN') or i == 'JJ' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario thirty two: nouns, injunctions and braces
-        elif all(i.__contains__('NN') or i == 'IN' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            if re.search('(^\(.*\)$)', text_wrds):
-                text_wrds = text_wrds.strip("()")
-                if re.search('^(NN.{0,1}\sIN)', text_pos):
-                    text_wrds = remove_first(split_text_wrds, 2)
-                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
-                else:
-                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                if re.search('^(NN.{0,1}\sIN)', text_pos):
-                    text_wrds = remove_first(split_text_wrds, 2)
-                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
-                else:
-                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario thirty three: nouns, commas and braces
-        elif all(i.__contains__('NN') or i == ',' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            pass
-
-        # scenario thirty four: nouns, conjunctions and braces
-        elif all(i.__contains__('NN') or i == 'CC' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            pass
-
-        # scenario thirty five: nouns, conjunctions, adjectives and braces
-        elif all(i.__contains__('NN') or i == 'CC' or i == 'JJ'  or i == '(' or i == ')' or i == '[' or i == ']' for i in  split_text_pos):
-            for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
-                cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario thirty six: nouns, injunctions, adjectives and braces
-        elif all(i.__contains__('NN') or i == 'JJ' or i == 'IN' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario thirty seven: nouns, conjunctions, injunctions, adjectives and braces
-        elif all(i.__contains__('NN') or i == 'CC' or i == 'IN' or i == 'JJ' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            pass
-
-        # scenario thirty eight: nouns,  adjectives and braces
-        elif all(i.__contains__('NN') or i == 'JJ' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            pass
-
-        # scenario thirty nine: nouns, commas,  adjectives and braces
-        elif all(i.__contains__('NN') or i == 'JJ' or i == ',' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            text_wrds = (re.sub('(\(|\[|\)|\])', ',', text_wrds))
-            for x in re.split(',+', text_wrds):
-                cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario forty: nouns, injunctions, commas and braces
-        elif all(i.__contains__('NN')  or i == 'IN' or i == ',' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            for x,y in zip(re.split(',+', text_wrds), re.split(',+', text_pos)):
-                if re.search('^(NN.{0,1}\sIN)', y):
-                    x = remove_first(x, 2)
-                    cleaned_labels_outcomes.append((label, x.strip()))
-                else:
-                    cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario forty one: nouns, conjunctions, injunctions, commas and braces
-        elif all(i.__contains__('NN') or i == 'CC' or i == 'IN' or i == 'JJ' or i == ',' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
-            text_wrds = (re.sub('(\(|\[|\)|\])', ',', text_wrds))
-            for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
-                if re.search('^(NN.{0,1}\sIN)', text_pos):
-                    x = remove_first(x, 2)
-                    cleaned_labels_outcomes.append((label, x.strip()))
-                else:
-                    cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario forty two: JJR's
-        elif any(i.__contains__('JJR')for i in split_text_pos):
-            text_wrds = ' '.join([i for i in ['' if j == 'JJR' or j == 'VBN' or j == 'RBR' else i for i, j in zip(split_text_wrds, split_text_pos)]]).strip()
-            text_pos =  ' '.join([i for i in ['' if j.__contains__('JJR') or j == 'VBN' or j == 'RBR' else j for j in split_text_pos]]).strip()
-            text_wrds = re.sub('(\(|\[|\)|\])', ',', text_wrds)
-            for x,y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split(',|CC', text_pos)):
-                if re.search('^(NN.{0,1}\sIN)', y):
-                    x = remove_first(x, 2)
-                    cleaned_labels_outcomes.append((label, x.strip()))
-                else:
-                    cleaned_labels_outcomes.append((label, x.strip()))
-
-        # scenario forty two: Adverbs
-        elif any(i.__contains__('RB') for i in split_text_pos):
-            if re.search('^(NN.{0,1}\sIN)', text_pos):
-                text_wrds = remove_first(text_wrds, 2)
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        # scenario forty three: nouns, DT's and Injunctions
-        elif all(i.__contains__('NN') or i == 'DT' or i =='IN' for i in split_text_pos):
-            cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        elif all(i.__contains__('NN') or i == 'DT' or i == 'JJ' for i in split_text_pos):
-            pass
-
-        elif all(i.__contains__('NN') or i == 'DT' or i == 'JJ' or i == ',' for i in split_text_pos):
-            pass
-
-        elif all(i.__contains__('NN') or i == 'DT' or i.__contains__('V') or i == 'IN' for i in split_text_pos):
-            pass
-
-        # scenario forty three: starting with nouns then injunction
-        elif re.search('^(NN.{0,1})+\sIN', text_pos):
-            if re.search('^(NN.{0,1}\sIN\sDT)', text_pos):
-                text_wrds = remove_first(split_text_wrds, 3)
-                text_wrds = re.sub('(\(|\[|\)|\])', ',', text_wrds)
-
-                text_pos = ' '.join([i for i in [',' if j == '(' or j == ')' or j == '[' or j == ']' else j for j in split_text_pos[3:]]]).strip()
-
-                for x, y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split(',|CC', text_pos)):
-                    if y.strip() != 'JJ':
-                        if x != '':
-                            if x.split()[0].strip() in self.unwanted['relative_terms']:
-                                x = remove_first(x, 1)
-                                cleaned_labels_outcomes.append((label, x.strip()))
-                            else:
-                                cleaned_labels_outcomes.append((label, x.strip()))
-                    else:
-                        cleaned_labels_outcomes.append((label, x.strip()))
-            else:
-                if re.search('^(NN.{0,1}\sIN)', text_pos):
-                    if re.search('^(NN.{0,1}\sIN\sPRP)|^(NN.{0,1}\sIN\sVB)', text_pos):
-                        cleaned_labels_outcomes.append((label, text_wrds.strip()))
-                    else:
-                        text_wrds = remove_first(split_text_wrds, 2)
-                        if re.search('(IN CC IN DT NN)$', text_pos):
-                            cleaned_labels_outcomes.append((label, text_wrds.strip()))
-                        else:
-                            for i in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
-                                cleaned_labels_outcomes.append((label, i.strip()))
-                else:
-                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
-        # scenario forty four: couns, numbers, commas, adjectives, conjunctions, DT's
-        elif all(i.__contains__('NN') or i=='CD' or i == 'IN' or i == ',' or i == 'JJ' or i == 'CC' or i == 'DT' for i in split_text_pos):
-            if re.search('(CD\sCC\sNN)$', text_pos):
-                if split_text_wrds[0] in self.unwanted['relative_terms']:
-                    text_wrds = remove_first(split_text_wrds, 1)
-                cleaned_labels_outcomes.append((label, text_wrds.strip()))
-            else:
-                for i in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
-                    if i:
-                        if i.split()[0] in self.unwanted['relative_terms']:
-                            i = remove_first(i, 1)
-                        cleaned_labels_outcomes.append((label, i.strip()))
-
-        # scenario forty five: nouns, DT's, TO's, commas, adjectives, conjunctions, DT's
-        elif all(i.__contains__('NN') or i == 'TO' or i == 'IN'  or i == 'CC' or i == ',' or i == 'JJ' or i ==  'DT' for i in split_text_pos):
-            cleaned_labels_outcomes.append((label, text_wrds.strip()))
-
-        else:
-            for p, q in zip([w.strip() for w in text_wrds.split(',')], [h.strip() for h in text_pos.split(',')]):
-                if (re.search('^(CC\sIN)|^(VB\sDT)', q)):
-                    p = remove_first(p, 2)
-                    cleaned_labels_outcomes.append((label, p.strip()))
-                else:
-                    p = re.sub('\(','-', p)
-                    p = re.sub('\)', '',p)
-                    if re.search('^(\-|\[|(CC))', q):
-                        p = remove_first(p, 1)
-                        cleaned_labels_outcomes.append((label, p.strip()))
-                    elif q == 'DT' or q == 'CD' or q == 'JJ' or len(p) < 2:
-                        pass
-                    elif len([i for i in q.split() if i.__contains__('J')]) > len([i for i in q.split() if i.__contains__('N')]):
-                        cleaned_labels_outcomes.append((label, p.strip()))
-                    elif re.search('^NN\sIN', q):
-                        to_add = remove_first(p, 2)
-                        if to_add:
+                    elif re.search(' {} '.format(j), f):
+                        if re.search('JJ CC JJ', text_pos):
+                            to_add = text_wrds
                             cleaned_labels_outcomes.append((label, to_add.strip()))
                         else:
-                            cleaned_labels_outcomes.append((label, p.strip()))
+                            for x, y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds),
+                                            re.split('CC|,', text_pos)):
+                                if y.strip() != 'JJ':
+                                    to_add = x.strip()
+                                    if to_add:
+                                        if to_add.split()[0].lower() in self.unwanted['relative_terms']:
+                                            to_add = remove_first(to_add, 1)
+                                            cleaned_labels_outcomes.append((label, to_add.strip()))
+
+            #scenario five: only nouns
+            elif (all(i.__contains__('NN') for i in split_text_pos)):
+                if text_wrds:
+                    if text_wrds.split()[0] in self.unwanted['relative_terms']:
+                        text_wrds = remove_first(text_wrds, 1)
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            #scenario six: nouns and conjunctions
+            elif all(i.__contains__('NN') or i == 'CC' for i in split_text_pos):
+                if(len([j for j in split_text_pos if j == 'CC']) == 1):
+                    for x in re.split(' and | or | and$| or$', text_wrds):
+                        if x.split()[0].lower() in self.unwanted['relative_terms']:
+                            x = remove_first(x, 1)
+                        cleaned_labels_outcomes.append((label, x.strip()))
+                elif(len([j for j in split_text_pos if j == 'CC']) > 1):
+                    cleaned_labels_outcomes.append((label, ' '.join(text_wrds.split()[-2:]).strip()))
+
+            # scenario seven: nouns and injunctions
+            elif all(i.__contains__('NN') or i == 'IN' for i in split_text_pos):
+                to_add = ''
+                if re.search('^(NN.{0,1}\sIN)', text_pos):
+                    split_text_wrds = split_text_wrds[2:]
+                    if split_text_wrds[0].lower() in self.unwanted['relative_terms']:
+                        to_add = remove_first(split_text_wrds, 1)
                     else:
+                        to_add = remove_first(split_text_wrds, 0)
+                else:
+                    to_add = text_wrds
+                if to_add:
+                    cleaned_labels_outcomes.append((label, to_add.strip()))
+
+
+            # scenario eight: only nouns and adjectives
+            elif all(i.__contains__('NN') or i == 'JJ' for i in split_text_pos):
+                if split_text_wrds[0].lower() in self.unwanted['relative_terms']:
+                    text_wrds = remove_first(text_wrds, 1)
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario nine: only conjunctions and adjectives
+            elif all(i.__contains__('CC') or i == 'JJ' for i in split_text_pos):
+                pass
+
+            # scenario ten: only nouns, conjunctions, and injunctions
+            elif all(i.__contains__('NN') or i == 'CC' or i == 'IN' for i in split_text_pos):
+                to_add = ''
+                if re.search('^(NN.{0,1}\sIN)', text_pos):
+                    to_add = remove_first(split_text_wrds, 2)
+                    if re.search('(IN\sCC\sIN\sNN.{0,1})$', text_pos):
+                        cleaned_labels_outcomes.append((label, to_add))
+                    else:
+                        for x in re.split(' and | or | ; | and$| or$| ;$', to_add):
+                            cleaned_labels_outcomes.append((label, x))
+                else:
+                    if re.search('((IN|NN.{0,1})\sCC\s[(NN.{0,1})(IN)\s]*NN.{0,1})$', text_pos):
+                        cleaned_labels_outcomes.append((label, text_wrds))
+                    else:
+                        cleaned_labels_outcomes.append((label, ' '.join(text_wrds.split()[-3:])))
+
+            # scenario eleven: only nouns, conjunctions, and adjectives
+            elif all(i.__contains__('NN') or i == 'CC' or i == 'JJ' for i in split_text_pos):
+                sc5_split_index = split_text_pos.index('CC')
+                if split_text_wrds[sc5_split_index-1] in split_text_wrds[sc5_split_index+1:]:
+                    cleaned_labels_outcomes.append((label, ' '.join(i for i in split_text_wrds[:sc5_split_index])))
+                    cleaned_labels_outcomes.append((label, ' '.join(i for i in split_text_wrds[(sc5_split_index+1):])))
+                else:
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            #scenario twelve: nouns and comma's
+            elif all(i.__contains__('NN') or i == ',' for i in split_text_pos):
+                for i in text_wrds.split(','):
+                    cleaned_labels_outcomes.append((label, i.strip()))
+
+            #scenario thirteen: nouns or commas and conjunctions
+            elif all(i.__contains__('NN') or i == ',' or i == 'CC' for i in split_text_pos):
+                for i in re.split(',| and | or | ; | and$| or$| ;$', text_wrds):
+                    if i:
+                        cleaned_labels_outcomes.append((label, i.strip()))
+
+            #scenario fourteen: nouns and commas and injunctions
+            elif all(i.__contains__('NN') or i == ',' or i == 'IN' for i in  split_text_pos):
+                for i in re.split(',', text_wrds):
+                    if i is not None:
+                        cleaned_labels_outcomes.append((label, i.strip()))
+
+            # scenario fifteen
+            elif all(i.__contains__('NN') or i == ',' or i == 'JJ' for i in  split_text_pos):
+                pass
+
+            #scenario sixteen nouns, comma's, injunctions and adjectives
+            elif all(i.__contains__('NN') or i == ',' or i == 'IN' or i == 'JJ' for i in split_text_pos):
+                if re.search('^(NN.{0,1}\sIN)', text_pos):
+                    text_wrds = remove_first(text_wrds, 2)
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario seventeen nouns, injunctions, commas and conjunctions
+            elif all(i.__contains__('NN') or i == ',' or i == 'IN'  or i == 'CC' for i in split_text_pos):
+                if re.search('(NN\s[,\sCC]+NN.{0,1}\s(IN)\sNN.{0,1})$', text_pos):
+                    cleaned_labels_outcomes.append((label, ' '.join([i for i in split_text_wrds[-6:]]).strip()))
+                else:
+                    for x, y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split('CC|,|;', text_pos)):
+                        if y.strip() != 'NNS':
+                            cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario eighteen: nouns, injunctions, conjunctions and adjectives
+            elif all(i.__contains__('NN') or i == 'IN' or i == 'CC' or i == 'JJ' for i in split_text_pos):
+                for x, y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split('CC|,|;', text_pos)):
+                    if re.search('^(NN.{0,1}\sIN)', y):
+                        x = remove_first(x, 2)
+                        if x.split()[0].lower() in self.unwanted['relative_terms']:
+                            x = remove_first(x, 1)
+                        else:
+                            x = x
+                    else:
+                        if x.split()[0].lower() in self.unwanted['relative_terms']:
+                            x = remove_first(x, 1)
+                        else:
+                            x = x
+                    cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario ninteen: nouns, injunctions, conjunctions, adjectives and commas
+            elif all(i.__contains__('NN') or i == 'IN' or i == 'CC' or i == 'JJ' or i == ',' for i in split_text_pos):
+                for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
+                    cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario twenty: nouns and verbs
+            elif all(i.__contains__('NN') or i.__contains__('V')  for i in split_text_pos):
+                split_text_wrds = ['' if j.__contains__('V') else i for i,j in zip(split_text_wrds, split_text_pos)]
+                if split_text_wrds[0] in self.unwanted['relative_terms'] or split_text_wrds[0] == '':
+                    text_wrds = remove_first(split_text_wrds, 1)
+                cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario twenty one: nouns, verbs and conjunctions
+            elif all(i.__contains__('NN') or i.__contains__('V') or i == 'CC' for i in split_text_pos):
+                text_wrds = ' '.join([i for i in ['' if j == 'VB' else i for i, j in zip(split_text_wrds, split_text_pos)]])
+                if re.search('((VBG|NN.{0,1})\sCC\s(NN.{0,1}|VBG)+\s(NN.{0,1})+)$', text_pos):
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
+                        cleaned_labels_outcomes.append((label, x.strip()))
+
+            #scenario twenty two: nouns, verbs and injunctions
+            elif all(i.__contains__('NN') or i.__contains__('V') or i == 'IN' for i in split_text_pos):
+                if re.search('^(NN.{0,1}\sIN)', text_pos):
+                    text_wrds = remove_first(split_text_wrds, 2)
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario twenty three: nouns, verbs and adjectives
+            elif all(i.__contains__('NN') or i.__contains__('V') or i == 'JJ' for i in split_text_pos):
+                if re.search('^VB', text_pos):
+                    text_wrds = remove_first(text_wrds, 1)
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario twenty four: nouns, verbs and commas
+            elif all(i.__contains__('NN') or i.__contains__('V') or i == ',' for i in split_text_pos):
+                pass
+
+            # scenario twenty five: nouns, verbs, commas and injunctions
+            elif all(i.__contains__('NN') or i.__contains__('V') or i == 'CC' or i == 'IN' for i in split_text_pos):
+                for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
+                    cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario twenty six: nouns, verbs, conjunctions and adjectives
+            elif all(i.__contains__('NN') or i.__contains__('V') or i == 'CC' or i == 'JJ' for i in split_text_pos):
+                for x, y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split('CC|,|;', text_pos)):
+                    if y.strip() != 'JJ':
+                        cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario twenty seven: nouns, verbs, conjunctions and acommas
+            elif all(i.__contains__('NN') or i.__contains__('V') or i == 'CC' or i == ',' for i in split_text_pos):
+                pass
+
+            # scenario twenty seven: nouns, verbs, injunctions and adjectives
+            elif all(i.__contains__('NN') or i.__contains__('V') or i == 'IN' or i == 'JJ' for i in split_text_pos):
+                split_text_wrds = ['' if j == 'VBN' else i for i, j in zip(split_text_wrds, split_text_pos)]
+                if re.search('^(NN.{0,1}\sIN)|^(VB.{0,1}\sIN)', text_pos):
+                    text_wrds = remove_first(text_wrds, 2)
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    text_wrds = remove_first(split_text_wrds, 0)
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario twenty eight: nouns, verbs, injunctions,d adjectives and conjunctions
+            elif all(i.__contains__('NN') or i.__contains__('V') or i == 'IN' or i == 'JJ' or i == 'CC' for i in split_text_pos):
+                if re.search('(VB.{0,1}\sCC\sJJ\sNN.{0,1}\sIN\sNN.{0,1})$', text_pos):
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
+                        cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario twenty nine: nouns, verbs, injunctions,d adjectives, conjunctions and commas
+            elif all(i.__contains__('NN') or i.__contains__('V') or i == 'IN' or i == 'JJ' or i == 'CC' or i == ',' for i in split_text_pos):
+                text_wrds = ' '.join([i for i in ['' if j == 'VBN' or j == 'VB' else i for i, j in zip(split_text_wrds, split_text_pos)]])
+                tex_pos =  ' '.join([i for i in ['' if j == 'VBN' or j == 'VB' else j for j in  split_text_pos]])
+                for x,y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split(' CC |,', text_pos)):
+                    if re.search('^(NN.{0,1}\sIN)', y):
+                        x = remove_first(x, 2)
+                        cleaned_labels_outcomes.append((label, x.strip()))
+                    else:
+                        cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario twenty nine: nouns and braces
+            elif all(i.__contains__('NN') or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario thirty one: nouns, adjectives and braces
+            elif all(i.__contains__('NN') or i == 'JJ' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario thirty two: nouns, injunctions and braces
+            elif all(i.__contains__('NN') or i == 'IN' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                if re.search('(^\(.*\)$)', text_wrds):
+                    text_wrds = text_wrds.strip("()")
+                    if re.search('^(NN.{0,1}\sIN)', text_pos):
+                        text_wrds = remove_first(split_text_wrds, 2)
+                        cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                    else:
+                        cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    if re.search('^(NN.{0,1}\sIN)', text_pos):
+                        text_wrds = remove_first(split_text_wrds, 2)
+                        cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                    else:
+                        cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario thirty three: nouns, commas and braces
+            elif all(i.__contains__('NN') or i == ',' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                pass
+
+            # scenario thirty four: nouns, conjunctions and braces
+            elif all(i.__contains__('NN') or i == 'CC' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                pass
+
+            # scenario thirty five: nouns, conjunctions, adjectives and braces
+            elif all(i.__contains__('NN') or i == 'CC' or i == 'JJ'  or i == '(' or i == ')' or i == '[' or i == ']' for i in  split_text_pos):
+                for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
+                    cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario thirty six: nouns, injunctions, adjectives and braces
+            elif all(i.__contains__('NN') or i == 'JJ' or i == 'IN' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario thirty seven: nouns, conjunctions, injunctions, adjectives and braces
+            elif all(i.__contains__('NN') or i == 'CC' or i == 'IN' or i == 'JJ' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                pass
+
+            # scenario thirty eight: nouns,  adjectives and braces
+            elif all(i.__contains__('NN') or i == 'JJ' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                pass
+
+            # scenario thirty nine: nouns, commas,  adjectives and braces
+            elif all(i.__contains__('NN') or i == 'JJ' or i == ',' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                text_wrds = (re.sub('(\(|\[|\)|\])', ',', text_wrds))
+                for x in re.split(',+', text_wrds):
+                    cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario forty: nouns, injunctions, commas and braces
+            elif all(i.__contains__('NN')  or i == 'IN' or i == ',' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                for x,y in zip(re.split(',+', text_wrds), re.split(',+', text_pos)):
+                    if re.search('^(NN.{0,1}\sIN)', y):
+                        x = remove_first(x, 2)
+                        cleaned_labels_outcomes.append((label, x.strip()))
+                    else:
+                        cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario forty one: nouns, conjunctions, injunctions, commas and braces
+            elif all(i.__contains__('NN') or i == 'CC' or i == 'IN' or i == 'JJ' or i == ',' or i == '(' or i == ')' or i == '[' or i == ']' for i in split_text_pos):
+                text_wrds = (re.sub('(\(|\[|\)|\])', ',', text_wrds))
+                for x in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
+                    if re.search('^(NN.{0,1}\sIN)', text_pos):
+                        x = remove_first(x, 2)
+                        cleaned_labels_outcomes.append((label, x.strip()))
+                    else:
+                        cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario forty two: JJR's
+            elif any(i.__contains__('JJR')for i in split_text_pos):
+                text_wrds = ' '.join([i for i in ['' if j == 'JJR' or j == 'VBN' or j == 'RBR' else i for i, j in zip(split_text_wrds, split_text_pos)]]).strip()
+                text_pos =  ' '.join([i for i in ['' if j.__contains__('JJR') or j == 'VBN' or j == 'RBR' else j for j in split_text_pos]]).strip()
+                text_wrds = re.sub('(\(|\[|\)|\])', ',', text_wrds)
+                for x,y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split(',|CC', text_pos)):
+                    if re.search('^(NN.{0,1}\sIN)', y):
+                        x = remove_first(x, 2)
+                        cleaned_labels_outcomes.append((label, x.strip()))
+                    else:
+                        cleaned_labels_outcomes.append((label, x.strip()))
+
+            # scenario forty two: Adverbs
+            elif any(i.__contains__('RB') for i in split_text_pos):
+                if re.search('^(NN.{0,1}\sIN)', text_pos):
+                    text_wrds = remove_first(text_wrds, 2)
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            # scenario forty three: nouns, DT's and Injunctions
+            elif all(i.__contains__('NN') or i == 'DT' or i =='IN' for i in split_text_pos):
+                cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            elif all(i.__contains__('NN') or i == 'DT' or i == 'JJ' for i in split_text_pos):
+                pass
+
+            elif all(i.__contains__('NN') or i == 'DT' or i == 'JJ' or i == ',' for i in split_text_pos):
+                pass
+
+            elif all(i.__contains__('NN') or i == 'DT' or i.__contains__('V') or i == 'IN' for i in split_text_pos):
+                pass
+
+            # scenario forty three: starting with nouns then injunction
+            elif re.search('^(NN.{0,1})+\sIN', text_pos):
+                if re.search('^(NN.{0,1}\sIN\sDT)', text_pos):
+                    text_wrds = remove_first(split_text_wrds, 3)
+                    text_wrds = re.sub('(\(|\[|\)|\])', ',', text_wrds)
+
+                    text_pos = ' '.join([i for i in [',' if j == '(' or j == ')' or j == '[' or j == ']' else j for j in split_text_pos[3:]]]).strip()
+
+                    for x, y in zip(re.split(' and | or | and$| or$|,|^and |^or ', text_wrds), re.split(',|CC', text_pos)):
+                        if y.strip() != 'JJ':
+                            if x != '':
+                                if x.split()[0].strip() in self.unwanted['relative_terms']:
+                                    x = remove_first(x, 1)
+                                    cleaned_labels_outcomes.append((label, x.strip()))
+                                else:
+                                    cleaned_labels_outcomes.append((label, x.strip()))
+                        else:
+                            cleaned_labels_outcomes.append((label, x.strip()))
+                else:
+                    if re.search('^(NN.{0,1}\sIN)', text_pos):
+                        if re.search('^(NN.{0,1}\sIN\sPRP)|^(NN.{0,1}\sIN\sVB)', text_pos):
+                            cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                        else:
+                            text_wrds = remove_first(split_text_wrds, 2)
+                            if re.search('(IN CC IN DT NN)$', text_pos):
+                                cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                            else:
+                                for i in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
+                                    cleaned_labels_outcomes.append((label, i.strip()))
+                    else:
+                        cleaned_labels_outcomes.append((label, text_wrds.strip()))
+            # scenario forty four: couns, numbers, commas, adjectives, conjunctions, DT's
+            elif all(i.__contains__('NN') or i=='CD' or i == 'IN' or i == ',' or i == 'JJ' or i == 'CC' or i == 'DT' for i in split_text_pos):
+                if re.search('(CD\sCC\sNN)$', text_pos):
+                    if split_text_wrds[0] in self.unwanted['relative_terms']:
+                        text_wrds = remove_first(split_text_wrds, 1)
+                    cleaned_labels_outcomes.append((label, text_wrds.strip()))
+                else:
+                    for i in re.split(' and | or | and$| or$|,|^and |^or ', text_wrds):
+                        if i:
+                            if i.split()[0] in self.unwanted['relative_terms']:
+                                i = remove_first(i, 1)
+                            cleaned_labels_outcomes.append((label, i.strip()))
+
+            # scenario forty five: nouns, DT's, TO's, commas, adjectives, conjunctions, DT's
+            elif all(i.__contains__('NN') or i == 'TO' or i == 'IN'  or i == 'CC' or i == ',' or i == 'JJ' or i ==  'DT' for i in split_text_pos):
+                cleaned_labels_outcomes.append((label, text_wrds.strip()))
+
+            else:
+                for p, q in zip([w.strip() for w in text_wrds.split(',')], [h.strip() for h in text_pos.split(',')]):
+                    if (re.search('^(CC\sIN)|^(VB\sDT)', q)):
+                        p = remove_first(p, 2)
                         cleaned_labels_outcomes.append((label, p.strip()))
+                    else:
+                        p = re.sub('\(','-', p)
+                        p = re.sub('\)', '',p)
+                        if re.search('^(\-|\[|(CC))', q):
+                            p = remove_first(p, 1)
+                            cleaned_labels_outcomes.append((label, p.strip()))
+                        elif q == 'DT' or q == 'CD' or q == 'JJ' or len(p) < 2:
+                            pass
+                        elif len([i for i in q.split() if i.__contains__('J')]) > len([i for i in q.split() if i.__contains__('N')]):
+                            cleaned_labels_outcomes.append((label, p.strip()))
+                        elif re.search('^NN\sIN', q):
+                            to_add = remove_first(p, 2)
+                            if to_add:
+                                cleaned_labels_outcomes.append((label, to_add.strip()))
+                            else:
+                                cleaned_labels_outcomes.append((label, p.strip()))
+                        else:
+                            cleaned_labels_outcomes.append((label, p.strip()))
+        except Exception as e:
+            print(e)
 
         return cleaned_labels_outcomes
 
@@ -657,7 +714,7 @@ def extracting_statistical_lexicon(other_sources):
                             if d_3 != '':
                                 d_3 = re.sub('\s\-\s','-',d_3)
                                 d_3 = re.sub('Þ ','fi',d_3)
-                                if d_3.lower() not in ['toxicity', 'the']:
+                                if d_3.lower() not in ['toxicity', 'the', 'pharmacokinetics']:
                                     statistical_terms.append(d_3)
 
         _stats = [i.lower() for i in (statistical_terms + other_sources)]
