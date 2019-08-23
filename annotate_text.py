@@ -41,11 +41,10 @@ def annotate_text(tager=''):
                                       ann_type='aggregated', model_phase='train')
 
     seq_dir = os.path.abspath(os.path.join(os.path.curdir, 'corrected_outcomes', 'BIO-data'))
-    #classificationdata_dir = os.path.abspath(os.path.join(os.path.curdir, 'corrected_outcomes', 'Labels-Outcomes-data'))
     create_storage_dirs([seq_dir])
     ebm_csv = []
 
-    with open(os.path.join(seq_dir, 'train.bmes'), 'w') as f:
+    with open(os.path.join(seq_dir, 'train_genia.bmes'), 'w') as f:
         for pmid, doc in ebm_extract.items():
             abstract = ' '.join(i for i in doc.tokens)
             #pprint(abstract)
@@ -125,7 +124,7 @@ def annotate_text(tager=''):
                 for k in corr_outcomes:
                     ebm_csv.append(k)
         ebm_csv_df = pd.DataFrame(ebm_csv, columns=['Label','Outcome'])
-        ebm_csv_df.to_csv('labels_outcomes.csv')
+        ebm_csv_df.to_csv('labels_outcomes_genia.csv')
         f.close()
 
 
@@ -151,34 +150,42 @@ def build_sequence_model(tokens, anns, cos, corr_outcomes):
                         temp_2.append('{} B-{}'.format(t_temp[0][0], label_tag(core_outcome, t_temp[0][1])))
                     elif len(t_temp) == 2:
                         temp_2.append('{} B-{}'.format(t_temp[0][0], label_tag(core_outcome, t_temp[0][1])))
-                        temp_2.append('{} I-{}'.format(t_temp[1][0], label_tag(core_outcome, t_temp[1][1])))
+                        if t_temp[1][1] == 0:
+                            temp_2.append('{} {}'.format(t_temp[1][0], "0"))
+                        else:
+                            temp_2.append('{} I-{}'.format(t_temp[1][0], label_tag(core_outcome, t_temp[1][1])))
                     else:
+                        q = 0
                         for h in range(len(t_temp)):
-                            if h == 0:
+                            if h == q:
                                 temp_2.append('{} B-{}'.format(t_temp[h][0], label_tag(core_outcome, t_temp[h][1])))
                             else:
-                                temp_2.append('{} I-{}'.format(t_temp[h][0], label_tag(core_outcome, t_temp[h][1])))
+                                if t_temp[h][1] != 0:
+                                    temp_2.append('{} I-{}'.format(t_temp[h][0], label_tag(core_outcome, t_temp[h][1])))
+                                else:
+                                    temp_2.append('{} {}'.format(t_temp[h][0], "0"))
+                                    q = h+1
+
 
                 temp.clear()
                 if corr_outcomes:
                     del corr_outcomes[0]
 
             else:
-                temp_2.append('{} {}'.format(tokens[i], "O"))
+                temp_2.append('{} {}'.format(tokens[i], "0"))
                 b += 1
     return temp_2
 
 def label_tag(d, x):
-    w = "O"
+    w = "0"
     if x != 0:
         w = d[x].upper()
     return w
 
 def create_storage_dirs(file_dir):
     for i in file_dir:
-        print(i)
-        # if not os.path.exists(i):
-        #     os.makedirs(i)
+        if not os.path.exists(i):
+            os.makedirs(i)
 
 if len(sys.argv) < 2:
     raise ValueError("Check your arguments, Either one of these are missing genia, medpost or stanford")
@@ -186,6 +193,3 @@ if len(sys.argv) < 2:
 input_1 = sys.argv[1]
 annotate_text(tager=input_1)
 
-# if __name__=='__main__':
-#     annotate_text(tager='genia')
-    #print(timeit.timeit("xml_wrapper()", setup="from __main__ import xml_wrapper"))
