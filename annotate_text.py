@@ -40,11 +40,13 @@ def annotate_text(tager=''):
     turker, ebm_extract = e.read_anns('hierarchical_labels', 'outcomes', \
                                       ann_type='aggregated', model_phase='train')
 
-    seq_dir = os.path.abspath(os.path.join(os.path.curdir, 'corrected_outcomes', 'BIO-data'))
+    seq_dir = os.path.abspath(os.path.join(os.path.curdir, 'corrected_outcomes', 'test'))
     create_storage_dirs([seq_dir])
     ebm_csv = []
 
-    with open(os.path.join(seq_dir, 'train_genia.bmes'), 'w') as f:
+    start = time.time()
+
+    with open(os.path.join(seq_dir, 'test_medpost.bmes'), 'w') as f:
         for pmid, doc in ebm_extract.items():
             abstract = ' '.join(i for i in doc.tokens)
             #pprint(abstract)
@@ -118,15 +120,18 @@ def annotate_text(tager=''):
                         t += 1
             if corr_outcomes:
                 temp_2 = build_sequence_model(v, u, core_outcome, corr_outcomes)
+                qq = 1
                 for i in temp_2:
+                    print(qq, i)
                     f.write('{}\n'.format(i))
+                    qq += 1
                 f.write('\n')
                 for k in corr_outcomes:
                     ebm_csv.append(k)
         ebm_csv_df = pd.DataFrame(ebm_csv, columns=['Label','Outcome'])
-        ebm_csv_df.to_csv('labels_outcomes_genia.csv')
+        ebm_csv_df.to_csv(os.path.join(os.path.abspath(os.path.curdir), 'corrected_outcomes/test/labels_outcomes_medpost.csv'))
         f.close()
-
+    print("Duration {}".format(time.time() - start))
 
 #BIO tagging function
 def build_sequence_model(tokens, anns, cos, corr_outcomes):
@@ -146,26 +151,21 @@ def build_sequence_model(tokens, anns, cos, corr_outcomes):
 
                 if temp:
                     t_temp = [i for i in temp]
-                    if len(t_temp) == 1:
-                        temp_2.append('{} B-{}'.format(t_temp[0][0], label_tag(core_outcome, t_temp[0][1])))
-                    elif len(t_temp) == 2:
-                        temp_2.append('{} B-{}'.format(t_temp[0][0], label_tag(core_outcome, t_temp[0][1])))
-                        if t_temp[1][1] == 0:
-                            temp_2.append('{} {}'.format(t_temp[1][0], "0"))
-                        else:
-                            temp_2.append('{} I-{}'.format(t_temp[1][0], label_tag(core_outcome, t_temp[1][1])))
-                    else:
-                        q = 0
-                        for h in range(len(t_temp)):
-                            if h == q:
-                                temp_2.append('{} B-{}'.format(t_temp[h][0], label_tag(core_outcome, t_temp[h][1])))
-                            else:
-                                if t_temp[h][1] != 0:
-                                    temp_2.append('{} I-{}'.format(t_temp[h][0], label_tag(core_outcome, t_temp[h][1])))
-                                else:
-                                    temp_2.append('{} {}'.format(t_temp[h][0], "0"))
-                                    q = h+1
-
+                    prev_tag = 0
+                    for token, tag in t_temp:
+                        if tag == 0:
+                            temp_2.append('{} {}'.format(token, "0"))
+                            prev_tag = tag
+                            continue
+                        if tag != 0 and prev_tag == 0:
+                            temp_2.append('{} B-{}'.format(token, core_outcome[tag].upper()))
+                            prev_tag = tag
+                        elif prev_tag != 0 and prev_tag == tag:
+                            temp_2.append('{} I-{}'.format(token, core_outcome[tag].upper()))
+                            prev_tag = tag
+                        elif prev_tag != 0 and prev_tag != tag:
+                            temp_2.append('{} B-{}'.format(token, core_outcome[tag].upper()))
+                            prev_tag = tag
 
                 temp.clear()
                 if corr_outcomes:
@@ -175,12 +175,6 @@ def build_sequence_model(tokens, anns, cos, corr_outcomes):
                 temp_2.append('{} {}'.format(tokens[i], "0"))
                 b += 1
     return temp_2
-
-def label_tag(d, x):
-    w = "0"
-    if x != 0:
-        w = d[x].upper()
-    return w
 
 def create_storage_dirs(file_dir):
     for i in file_dir:
